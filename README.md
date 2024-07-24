@@ -10,7 +10,9 @@ For a quick preview, see the image below:
 ## Requirements
 
 This project requires Python 3.7 or later. All necessary dependencies are listed in the `requirements.txt` file. You can install them using pip:
+```bash
 pip install -r requirements.txt
+
 
 ## How to Run
 
