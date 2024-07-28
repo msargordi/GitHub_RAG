@@ -17,7 +17,7 @@ import time
 import os
 
 # Set your Fireworks AI API key
-os.environ["FIREWORKS_API_KEY"] = "XrpkqpVwX8Z7bo4Au4vYAmAyABR4NMwwG4Kt2uoa0v4zUJ7h"
+os.environ["FIREWORKS_API_KEY"] = ""
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Process repository with custom parameters.")
@@ -27,7 +27,7 @@ parser.add_argument("--chunk_size", type=int, default=250,
                     help="Chunk size for text splitting (default: 250)")
 parser.add_argument("--num_docs", type=int, default=4, 
                     help="Number of best retrieved documents (default: 4)")
-parser.add_argument("--model_name", type=str, default="accounts/fireworks/models/llama-v2-7b-chat",
+parser.add_argument("--model_name", type=str, default="accounts/fireworks/models/llama-v3p1-8b-instruct",
                     help="Name of the Fireworks AI model to use")
 args = parser.parse_args()
 
@@ -35,7 +35,8 @@ args = parser.parse_args()
 fireworks_model = args.model_name
 
 # Ask for the repository URL from the user
-repo_url = input("Please enter the repository URL (e.g., https://github.com/matsilv/knowledge-injection-dnn): ")
+# repo_url = input("Please enter the repository URL (e.g., https://github.com/matsilv/knowledge-injection-dnn): ")
+repo_url = "https://github.com/matsilv/knowledge-injection-dnn"
 
 # Extract the repository path from the URL
 if "https://github.com/" in repo_url:
@@ -43,6 +44,7 @@ if "https://github.com/" in repo_url:
 else:
     print("Invalid URL. Please make sure it starts with 'https://github.com/'")
     exit(1)
+
 
 # Function to clone the repository
 def clone_repository(repo_url, repo_path):
@@ -52,8 +54,12 @@ def clone_repository(repo_url, repo_path):
     else:
         print(f"Repository already exists at {repo_path}.")
 
-# Clone the repository using a system call
-clone_repository(repo_url, repo_path)
+# Clone the repository (with error handling)
+try:
+    clone_repository(repo_url, repo_path)
+except subprocess.CalledProcessError as e:
+    print(f"Error cloning repository: {e}")
+    exit(1)
 
 # Function to load documents from files and add line numbers and file name
 def load_documents_from_repo(repo_path, file_extensions):
@@ -72,30 +78,54 @@ def load_documents_from_repo(repo_path, file_extensions):
                     docs.append(content_with_filename)
     return docs
 
-docs_lists = load_documents_from_repo(repo_path, args.file_types)
+# Define the path for storing embeddings
+persist_directory = os.path.join(repo_path, "chroma_db")
 
-# Convert list of strings to list of Document objects
+# Function to load or create vectorstore
+def load_or_create_vectorstore(documents, embedding_instance, persist_directory):
+    if os.path.exists(persist_directory):
+        print("Loading existing vectorstore from disk...")
+        return Chroma(
+            collection_name="rag-chroma",
+            embedding_function=embedding_instance,
+            persist_directory=persist_directory
+        )
+    else:
+        print("Creating new vectorstore and persisting to disk...")
+        vectorstore = Chroma.from_documents(
+            documents=documents,
+            collection_name="rag-chroma",
+            embedding=embedding_instance,
+            persist_directory=persist_directory
+        )
+        vectorstore.persist()
+        return vectorstore
+
+# Load documents
+docs_lists = load_documents_from_repo(repo_path, args.file_types)
 documents = [Document(page_content=doc) for doc in docs_lists]
 
-# Text splitting with character-based text splitter
 text_splitter = PythonCodeTextSplitter.from_tiktoken_encoder(
     chunk_size=args.chunk_size, chunk_overlap=0
 )
-
 doc_splits = text_splitter.split_documents(documents)
-print("Example of a chunk:")
-print(doc_splits[0])
 
-# embedding_instance = FireworksEmbeddings(model="accounts/fireworks/models/text-embedding-3-small")
+# Print example chunk
+print("Example of a chunk:")
+print("_____________________________________________________________________________")
+print(doc_splits[0])
+print("_____________________________________________________________________________")
+
+# embedding_instance = FireworksEmbeddings(model="nomic-ai/nomic-embed-text-v1.5")
 embedding_instance = GPT4AllEmbeddings()
-# Adding to vectorDB
-vectorstore = Chroma.from_documents(
-    documents=doc_splits,
-    collection_name="rag-chroma",
-    embedding=embedding_instance,
-)
+
+# Load or create vectorstore
+vectorstore = load_or_create_vectorstore(doc_splits, embedding_instance, persist_directory)
+
+# Create retriever
 retriever = vectorstore.as_retriever(search_kwargs={"k": args.num_docs})
 print("Retriever is ready!")
+
 
 # LLM
 llm = ChatFireworks(model=fireworks_model, temperature=0)
@@ -286,6 +316,6 @@ while True:
     print("_____________________________________________________________________________")
     pprint(value["generation"])
     print("_____________________________________________________________________________")
-    end_time = time.process_time()
+    end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Elapsed time: {elapsed_time} seconds")
+    print(f"Elapsed time: {elapsed_time:.2f} seconds")
