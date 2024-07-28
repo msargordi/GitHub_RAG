@@ -24,7 +24,11 @@ cd GitHub_RAG
 
 3. Run the script with Python:
 ```
-python main.py [arguments]
+python ollama.py [arguments]
+```
+or
+```
+python API_call.py [arguments]
 ```
 
 The script accepts several optional arguments:
