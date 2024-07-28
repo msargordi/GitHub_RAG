@@ -16,8 +16,8 @@ import argparse
 import time
 import os
 
-# Set your Fireworks AI API key
-os.environ["FIREWORKS_API_KEY"] = ""
+# Get the API key from environment variable
+api_key = os.environ.get("FIREWORKS_API_KEY")
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Process repository with custom parameters.")
